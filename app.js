@@ -11,7 +11,8 @@ const MAX_DIM = 1600; // cap the working resolution for speed/memory
 
 // ---- Application state -----------------------------------------------------
 const state = {
-  pages: [],          // { id, dataUrl, width, height, text }
+  pages: [],          // { id, dataUrl, original, width, height, text, words }
+  docName: '',        // user-supplied document name for exports
   edit: {
     sourceCanvas: null, // full-res working image for the current scan
     displayScale: 1,    // sourceCanvas px -> editCanvas px
@@ -498,7 +499,7 @@ async function ocrAllPages() {
       await recognizePage(worker, pending[i]);
     }
     renderLibrary();
-    toast('Text extracted from all pages');
+    toast('Text extracted — OCR is experimental, check the results');
   } catch (err) {
     console.error(err);
     toast('OCR failed — try again');
@@ -519,6 +520,18 @@ async function recropPage() {
 }
 
 // ---- Exports ---------------------------------------------------------------
+// Build a safe download filename from the document name, falling back to a
+// timestamped default. Strips characters that are illegal in filenames.
+function exportName(ext) {
+  const fallback = `${BRAND}-scan-${Date.now()}`;
+  const clean = (state.docName || '')
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '')
+    .replace(/\s+/g, ' ')
+    .slice(0, 80);
+  return `${clean || fallback}.${ext}`;
+}
+
 function exportPdf() {
   if (!state.pages.length) return;
   if (!window.jspdf) { toast('PDF engine still loading…'); return; }
@@ -561,7 +574,7 @@ function exportPdf() {
         }
       });
 
-      doc.save(`${BRAND}-scan-${Date.now()}.pdf`);
+      doc.save(exportName('pdf'));
       toast(searchable ? 'Searchable PDF exported' : 'PDF exported');
     } catch (err) {
       console.error(err);
@@ -587,7 +600,7 @@ async function exportText() {
   const blob = new Blob([body], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${BRAND}-text-${Date.now()}.txt`;
+  a.download = exportName('txt');
   a.click();
   URL.revokeObjectURL(a.href);
   toast('Text exported');
@@ -598,6 +611,12 @@ function bindEvents() {
   $('#btnStartEmpty').addEventListener('click', openCamera);
   $('#btnStart').addEventListener('click', openCamera);
   $('#btnOcrAll').addEventListener('click', ocrAllPages);
+  $('#docName').addEventListener('input', (e) => { state.docName = e.target.value; });
+
+  // FAQ / install modal
+  $('#btnHelp').addEventListener('click', () => { $('#faqModal').hidden = false; });
+  $('#btnFaqClose').addEventListener('click', () => { $('#faqModal').hidden = true; });
+  $('#faqModal').addEventListener('click', (e) => { if (e.target.id === 'faqModal') $('#faqModal').hidden = true; });
 
   // Camera
   $('#btnShutter').addEventListener('click', captureFromCamera);

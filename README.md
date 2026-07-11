@@ -34,6 +34,24 @@ the service worker:
 | [Tesseract.js](https://tesseract.projectnaptha.com/) | OCR |
 | [jsPDF](https://github.com/parallax/jsPDF) | PDF export |
 
+## Install (PWA)
+
+PaperLens installs to your home screen and runs full-screen, offline.
+
+**Android (Chrome)** — open the site, tap the **⋮** menu, choose **Install app**
+(or **Add to Home screen**), and confirm.
+
+**iPhone / iPad (Safari)** — open the site in **Safari** (iOS only allows install
+from Safari), tap the **Share** button, scroll to **Add to Home Screen**, then **Add**.
+
+An in-app **?** button (top-right) shows the same instructions.
+
+## Notes on OCR
+
+Text extraction is **experimental**. It's solid on clean, high-contrast printed
+text but unreliable on handwriting, small fonts, and low-contrast photos. Treat
+the extracted text — and the searchable-PDF layer — as a rough draft for now.
+
 ## Run locally
 
 Any static server works (camera + service worker need `https://` or

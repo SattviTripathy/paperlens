@@ -1,5 +1,5 @@
 /* PaperLens service worker — offline app shell + runtime caching of CDN libs. */
-const SHELL_CACHE = 'paperlens-shell-v5';
+const SHELL_CACHE = 'paperlens-shell-v6';
 const RUNTIME_CACHE = 'paperlens-runtime-v1';
 
 const SHELL_ASSETS = [

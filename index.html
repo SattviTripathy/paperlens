@@ -9,7 +9,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
 </head>
 <body>
   <!-- App shell -->
@@ -22,6 +22,7 @@
       <span class="brand-name">PaperLens</span>
     </div>
     <div class="topbar-actions">
+      <button id="btnHelp" class="btn ghost icon" title="Help &amp; install" aria-label="Help and install">?</button>
       <button id="btnExportText" class="btn ghost" title="Export recognized text">Text</button>
       <button id="btnExportPdf" class="btn primary" title="Export all pages to PDF">Export PDF</button>
     </div>
@@ -43,10 +44,11 @@
       </div>
 
       <div id="library" class="library" hidden>
+        <input id="docName" class="doc-name" type="text" placeholder="Untitled document" maxlength="80" aria-label="Document name" />
         <div class="library-head">
           <h2><span id="pageCount">0</span> pages</h2>
           <div class="library-actions">
-            <button id="btnOcrAll" class="btn ghost">Extract text</button>
+            <button id="btnOcrAll" class="btn ghost" title="Recognize text on every page (experimental)">Extract text</button>
             <button id="btnStart" class="btn primary">New scan</button>
           </div>
         </div>
@@ -106,12 +108,60 @@
       <div class="modal-image"><img id="modalImg" alt="Scanned page" /></div>
       <div id="ocrPanel" class="ocr-panel" hidden>
         <textarea id="ocrText" placeholder="Recognized text will appear here…" spellcheck="false"></textarea>
+        <p class="ocr-note">⚠ Text extraction (OCR) is experimental — accuracy varies, and it struggles with handwriting, small fonts, and low-contrast scans.</p>
       </div>
       <div class="modal-actions">
         <button id="btnModalClose" class="btn ghost">Close</button>
         <button id="btnModalRecrop" class="btn ghost">Re-crop</button>
         <button id="btnModalDelete" class="btn danger">Delete</button>
         <button id="btnModalOcr" class="btn primary">Extract text (OCR)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAQ / INSTALL MODAL -->
+  <div id="faqModal" class="modal" hidden>
+    <div class="modal-card faq-card">
+      <div class="faq-body">
+        <h2>FAQ &amp; Install</h2>
+
+        <section>
+          <h3>Install on Android</h3>
+          <ol>
+            <li>Open this page in <b>Chrome</b>.</li>
+            <li>Tap the <b>⋮</b> menu (top-right).</li>
+            <li>Tap <b>Install app</b> (or <b>Add to Home screen</b>).</li>
+            <li>Confirm — PaperLens lands on your home screen and opens full-screen like a native app.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>Install on iPhone &amp; iPad</h3>
+          <ol>
+            <li>Open this page in <b>Safari</b> — iOS only allows installing from Safari.</li>
+            <li>Tap the <b>Share</b> button (the square with an up arrow).</li>
+            <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+            <li>Tap <b>Add</b> — the app icon appears on your home screen.</li>
+          </ol>
+        </section>
+
+        <section>
+          <h3>How good is text extraction (OCR)?</h3>
+          <p><b>OCR is experimental for now.</b> It works best on clean, high-contrast printed text. Handwriting, small fonts, and poorly lit photos come out unreliable. Treat extracted text as a rough draft — accuracy will improve in future updates.</p>
+        </section>
+
+        <section>
+          <h3>Is my data private?</h3>
+          <p>Yes. Edge detection, cleanup, OCR, and PDF building all run on your device. No photos or text ever leave your browser — there's no server and no account.</p>
+        </section>
+
+        <section>
+          <h3>Does it work offline?</h3>
+          <p>After the first load, yes. The app and its libraries are cached, so you can scan without a connection. The camera and installation need the page to be opened over <b>https</b>.</p>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button id="btnFaqClose" class="btn primary">Got it</button>
       </div>
     </div>
   </div>
@@ -129,7 +179,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <!-- App code -->
-  <script src="cv-pipeline.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="cv-pipeline.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
