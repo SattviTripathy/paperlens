@@ -7,14 +7,20 @@ accounts, no server. Installable as a PWA and works offline after the first load
 
 ## Features
 
-- **Edge detection** — OpenCV.js Canny + contour pipeline auto-finds the page.
+- **Edge detection** — OpenCV.js Canny + convex-hull pipeline auto-finds the page.
 - **Draggable corners** — nudge the four handles when auto-detect isn't perfect.
 - **Perspective correction** — warps the page to a flat, head-on rectangle.
 - **Cleanup filters** — Enhance (magic color), Grayscale, and B&W (adaptive
   threshold) for crisp text scans.
-- **Multi-page capture** — build up a stack of pages in one session.
-- **OCR** — extract selectable text from any page via Tesseract.js.
-- **Export** — one combined PDF, or the recognized text as `.txt`.
+- **Batch import** — select many photos at once; each is auto-detected,
+  de-skewed, and enhanced into its own page.
+- **Multi-page documents** — build up an ordered stack of pages in one session.
+- **Re-crop** — re-open any saved page's original photo to fix a bad detection.
+- **OCR** — Tesseract.js, per page or the **whole document** in one action.
+- **Export**
+  - **Searchable PDF** — all pages as one PDF with an invisible, selectable
+    text layer positioned over each scan (search/copy from the document).
+  - **Combined `.txt`** — the recognized text of every page in one file.
 - **PWA** — installable, offline-capable, camera-ready.
 
 ## Tech

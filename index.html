@@ -9,7 +9,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
   <!-- App shell -->
@@ -38,14 +38,17 @@
           </svg>
         </div>
         <h1>Scan anything, keep it crisp</h1>
-        <p>Point your camera at a document, or drop in a photo. PaperLens finds the edges, flattens the page, and cleans it up — all on your device.</p>
+        <p>Point your camera at a document, or drop in several photos at once. PaperLens finds the edges, flattens each page, cleans it up, and builds one searchable PDF — all on your device.</p>
         <button id="btnStartEmpty" class="btn primary big">New scan</button>
       </div>
 
       <div id="library" class="library" hidden>
         <div class="library-head">
           <h2><span id="pageCount">0</span> pages</h2>
-          <button id="btnStart" class="btn primary">New scan</button>
+          <div class="library-actions">
+            <button id="btnOcrAll" class="btn ghost">Extract text</button>
+            <button id="btnStart" class="btn primary">New scan</button>
+          </div>
         </div>
         <div id="pageGrid" class="page-grid"></div>
       </div>
@@ -58,7 +61,7 @@
         <button id="btnCameraCancel" class="round ghost" aria-label="Cancel">✕</button>
         <button id="btnShutter" class="shutter" aria-label="Capture"></button>
         <label class="round ghost" aria-label="Choose from files">
-          <input id="filePicker" type="file" accept="image/*" hidden />
+          <input id="filePicker" type="file" accept="image/*" multiple hidden />
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="11" r="2"/><path d="M6 18l4-4 3 3 3-4 2 2v3z"/></svg>
         </label>
       </div>
@@ -106,6 +109,7 @@
       </div>
       <div class="modal-actions">
         <button id="btnModalClose" class="btn ghost">Close</button>
+        <button id="btnModalRecrop" class="btn ghost">Re-crop</button>
         <button id="btnModalDelete" class="btn danger">Delete</button>
         <button id="btnModalOcr" class="btn primary">Extract text (OCR)</button>
       </div>
@@ -125,7 +129,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <!-- App code -->
-  <script src="cv-pipeline.js"></script>
-  <script src="app.js"></script>
+  <script src="cv-pipeline.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

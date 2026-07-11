@@ -17,6 +17,7 @@ const state = {
     displayScale: 1,    // sourceCanvas px -> editCanvas px
     quad: null,         // 4 points in editCanvas (display) coords
     dragIndex: -1,
+    targetPageId: null, // when re-cropping, the page to replace instead of append
   },
   filter: {
     warpedCanvas: null, // perspective-corrected page, pre-filter
@@ -25,6 +26,7 @@ const state = {
   },
   modalPageId: null,
   ocrWorker: null,
+  ocrProgress: { i: 0, n: 0 }, // for whole-document OCR status text
 };
 
 // ---- Tiny DOM helpers ------------------------------------------------------
@@ -96,12 +98,79 @@ function loadImageFromBlob(blob) {
   });
 }
 
-async function startEditFromImage(img) {
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// Enter the manual editor for a single image. Pass a page id to replace that
+// page on save (re-crop); otherwise a new page is appended.
+async function startEditFromImage(img, targetPageId = null) {
   state.edit.sourceCanvas = fitCanvasToImage(img);
+  state.edit.targetPageId = targetPageId;
   showView('edit');
   await cvReady();
   layoutEditCanvas();
   autoDetect(); // seed the quad with a detected page (falls back to inset)
+}
+
+// Run the full pipeline (detect -> warp -> enhance) on a source canvas with no
+// manual step, returning a finished page canvas. Used for batch import.
+function autoProcessCanvas(srcCanvas) {
+  const src = matFromCanvas(srcCanvas);
+  let warped;
+  try {
+    const pts = detectDocumentQuad(src);
+    warped = pts ? warpToDocument(src, pts) : src.clone();
+  } finally {
+    src.delete();
+  }
+  const enhanced = applyFilter(warped, 'enhance');
+  warped.delete();
+  const out = document.createElement('canvas');
+  cvShow(enhanced, out);
+  enhanced.delete();
+  return out;
+}
+
+function pushPage(processedCanvas, originalCanvas) {
+  state.pages.push({
+    id: crypto.randomUUID(),
+    dataUrl: processedCanvas.toDataURL('image/jpeg', 0.92),
+    original: originalCanvas.toDataURL('image/jpeg', 0.85), // kept for re-crop
+    width: processedCanvas.width,
+    height: processedCanvas.height,
+    text: '',
+    words: null,
+  });
+}
+
+// Auto-process several images and append them all as pages.
+async function batchImport(files) {
+  await cvReady();
+  showLoader(`Processing ${files.length} pages…`);
+  let added = 0;
+  for (let i = 0; i < files.length; i++) {
+    $('#loaderText').textContent = `Processing page ${i + 1} of ${files.length}…`;
+    try {
+      const img = await loadImageFromBlob(files[i]);
+      const srcCanvas = fitCanvasToImage(img);
+      const processed = autoProcessCanvas(srcCanvas);
+      pushPage(processed, srcCanvas);
+      added++;
+    } catch (err) {
+      console.error('Skipped an image during batch import:', err);
+    }
+    await new Promise((r) => setTimeout(r, 0)); // let the progress text paint
+  }
+  hideLoader();
+  showView('library');
+  renderLibrary();
+  toast(added === files.length ? `Added ${added} pages` : `Added ${added} of ${files.length} pages`);
 }
 
 // ---- Camera ----------------------------------------------------------------
@@ -309,14 +378,32 @@ function renderFilter() {
 function savePage() {
   const canvas = $('#filterCanvas');
   const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  state.pages.push({
-    id: crypto.randomUUID(),
-    dataUrl,
-    width: canvas.width,
-    height: canvas.height,
-    text: '',
-  });
-  toast('Page saved');
+
+  if (state.edit.targetPageId) {
+    // Re-crop: replace the existing page in place and invalidate its OCR.
+    const page = state.pages.find((p) => p.id === state.edit.targetPageId);
+    if (page) {
+      page.dataUrl = dataUrl;
+      page.width = canvas.width;
+      page.height = canvas.height;
+      page.text = '';
+      page.words = null;
+    }
+    state.edit.targetPageId = null;
+    toast('Page updated');
+  } else {
+    state.pages.push({
+      id: crypto.randomUUID(),
+      dataUrl,
+      original: state.edit.sourceCanvas.toDataURL('image/jpeg', 0.85),
+      width: canvas.width,
+      height: canvas.height,
+      text: '',
+      words: null,
+    });
+    toast('Page saved');
+  }
+
   showView('library');
   renderLibrary();
 }
@@ -329,6 +416,7 @@ function openPageModal(id) {
   $('#modalImg').src = page.dataUrl;
   $('#ocrText').value = page.text || '';
   $('#ocrPanel').hidden = !page.text;
+  $('#btnModalRecrop').hidden = !page.original; // older pages may lack an original
   $('#pageModal').hidden = false;
 }
 
@@ -343,24 +431,45 @@ function deleteCurrentPage() {
   renderLibrary();
 }
 
+// Lazily create a single reusable OCR worker. Its progress text adapts to
+// whether we're OCR'ing one page or the whole document (state.ocrProgress).
+async function getOcrWorker() {
+  if (!state.ocrWorker) {
+    state.ocrWorker = await Tesseract.createWorker('eng', 1, {
+      logger: (m) => {
+        if (m.status !== 'recognizing text') return;
+        const pct = Math.round(m.progress * 100);
+        const pr = state.ocrProgress;
+        $('#loaderText').textContent = pr.n > 1
+          ? `Extracting text… page ${pr.i} of ${pr.n} (${pct}%)`
+          : `Extracting text… ${pct}%`;
+      },
+    });
+  }
+  return state.ocrWorker;
+}
+
+// Recognize one page and store both plain text and per-word boxes. The boxes
+// (in the page image's pixel space) power the searchable-PDF text layer.
+async function recognizePage(worker, page) {
+  const { data } = await worker.recognize(page.dataUrl, {}, { blocks: true });
+  page.text = (data.text || '').trim();
+  page.words = (data.words || [])
+    .filter((w) => w.text && w.text.trim() && w.bbox)
+    .map((w) => ({ text: w.text, bbox: w.bbox }));
+  return page;
+}
+
 async function runOcr() {
   const page = state.pages.find((p) => p.id === state.modalPageId);
   if (!page) return;
   if (typeof Tesseract === 'undefined') { toast('OCR engine still loading…'); return; }
 
-  showLoader('Recognizing text…');
+  showLoader('Extracting text…');
+  state.ocrProgress = { i: 1, n: 1 };
   try {
-    if (!state.ocrWorker) {
-      state.ocrWorker = await Tesseract.createWorker('eng', 1, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            $('#loaderText').textContent = `Recognizing text… ${Math.round(m.progress * 100)}%`;
-          }
-        },
-      });
-    }
-    const { data } = await state.ocrWorker.recognize(page.dataUrl);
-    page.text = (data.text || '').trim();
+    const worker = await getOcrWorker();
+    await recognizePage(worker, page);
     $('#ocrText').value = page.text;
     $('#ocrPanel').hidden = false;
     renderLibrary();
@@ -371,6 +480,42 @@ async function runOcr() {
   } finally {
     hideLoader();
   }
+}
+
+// OCR every page that hasn't been recognized yet (whole-document extract).
+async function ocrAllPages() {
+  if (!state.pages.length) { toast('Add some pages first'); return; }
+  if (typeof Tesseract === 'undefined') { toast('OCR engine still loading…'); return; }
+  const pending = state.pages.filter((p) => !(p.words && p.words.length));
+  if (!pending.length) { toast('All pages already have text'); return; }
+
+  showLoader('Extracting text…');
+  state.ocrProgress = { i: 0, n: pending.length };
+  try {
+    const worker = await getOcrWorker();
+    for (let i = 0; i < pending.length; i++) {
+      state.ocrProgress.i = i + 1;
+      await recognizePage(worker, pending[i]);
+    }
+    renderLibrary();
+    toast('Text extracted from all pages');
+  } catch (err) {
+    console.error(err);
+    toast('OCR failed — try again');
+  } finally {
+    hideLoader();
+  }
+}
+
+// Re-open the manual editor on a saved page's original photo to fix a crop.
+async function recropPage() {
+  const page = state.pages.find((p) => p.id === state.modalPageId);
+  if (!page) return;
+  if (!page.original) { toast('No original available to re-crop'); return; }
+  const id = page.id;
+  closePageModal();
+  const img = await loadImage(page.original);
+  startEditFromImage(img, id);
 }
 
 // ---- Exports ---------------------------------------------------------------
@@ -386,17 +531,38 @@ function exportPdf() {
       const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true });
       const pw = doc.internal.pageSize.getWidth();
       const ph = doc.internal.pageSize.getHeight();
+      let searchable = false;
 
       state.pages.forEach((p, i) => {
         if (i > 0) doc.addPage();
         const ratio = Math.min(pw / p.width, ph / p.height);
         const w = p.width * ratio;
         const h = p.height * ratio;
-        doc.addImage(p.dataUrl, 'JPEG', (pw - w) / 2, (ph - h) / 2, w, h);
+        const ox = (pw - w) / 2;
+        const oy = (ph - h) / 2;
+        doc.addImage(p.dataUrl, 'JPEG', ox, oy, w, h);
+
+        // Lay an invisible, selectable text layer over the scan using the OCR
+        // word boxes. Placed per word, so text is searchable and copyable
+        // while the visible page stays the original image.
+        if (p.words && p.words.length) {
+          searchable = true;
+          p.words.forEach((word) => {
+            const b = word.bbox;
+            const wpt = (b.x1 - b.x0) * ratio;
+            const hpt = (b.y1 - b.y0) * ratio;
+            if (wpt <= 0 || hpt <= 0) return;
+            doc.setFontSize(Math.max(1, hpt));
+            doc.text(word.text, ox + b.x0 * ratio, oy + b.y1 * ratio, {
+              renderingMode: 'invisible',
+              baseline: 'alphabetic',
+            });
+          });
+        }
       });
 
       doc.save(`${BRAND}-scan-${Date.now()}.pdf`);
-      toast('PDF exported');
+      toast(searchable ? 'Searchable PDF exported' : 'PDF exported');
     } catch (err) {
       console.error(err);
       toast('PDF export failed');
@@ -406,9 +572,14 @@ function exportPdf() {
   }, 50);
 }
 
-function exportText() {
+async function exportText() {
+  if (!state.pages.length) return;
+  // If nothing has been recognized yet, OCR the whole document first.
+  if (!state.pages.some((p) => p.text)) {
+    await ocrAllPages();
+  }
   const withText = state.pages.filter((p) => p.text);
-  if (!withText.length) { toast('No recognized text yet — run OCR on a page first'); return; }
+  if (!withText.length) { toast('No text found in this document'); return; }
   const body = state.pages
     .map((p, i) => (p.text ? `--- Page ${i + 1} ---\n${p.text}` : ''))
     .filter(Boolean)
@@ -426,16 +597,23 @@ function exportText() {
 function bindEvents() {
   $('#btnStartEmpty').addEventListener('click', openCamera);
   $('#btnStart').addEventListener('click', openCamera);
+  $('#btnOcrAll').addEventListener('click', ocrAllPages);
 
   // Camera
   $('#btnShutter').addEventListener('click', captureFromCamera);
   $('#btnCameraCancel').addEventListener('click', () => showView('library'));
   $('#filePicker').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
+    const files = Array.from(e.target.files);
     e.target.value = '';
-    if (!file) return;
-    const img = await loadImageFromBlob(file);
-    startEditFromImage(img);
+    if (!files.length) return;
+    if (files.length === 1) {
+      // Single image → review it in the manual editor.
+      const img = await loadImageFromBlob(files[0]);
+      startEditFromImage(img);
+    } else {
+      // Several images → auto-process the whole batch into pages.
+      await batchImport(files);
+    }
   });
 
   // Edit
@@ -477,6 +655,7 @@ function bindEvents() {
 
   // Modal
   $('#btnModalClose').addEventListener('click', closePageModal);
+  $('#btnModalRecrop').addEventListener('click', recropPage);
   $('#btnModalDelete').addEventListener('click', deleteCurrentPage);
   $('#btnModalOcr').addEventListener('click', runOcr);
   $('#pageModal').addEventListener('click', (e) => {
